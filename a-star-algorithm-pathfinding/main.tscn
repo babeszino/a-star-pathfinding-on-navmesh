@@ -210,11 +210,7 @@ shape = SubResource("CapsuleShape2D_0xm2m")
 position = Vector2(714, 100)
 scale = Vector2(0.12, 0.12)
 script = ExtResource("3_h2yge")
-movement_speed = null
 target_path = NodePath("../Player")
-path_update_interval = null
-arrival_distance = null
-debug_draw = null
 
 [node name="Sprite2D" type="Sprite2D" parent="Enemy"]
 modulate = Color(1, 0.10980392, 0, 1)

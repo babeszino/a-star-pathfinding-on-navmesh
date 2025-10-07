@@ -73,7 +73,7 @@ func _process(delta):
 		_update_path()
 	
 	# talalt utvonal kovetese
-	if path.size > 0:
+	if path.size() > 0:
 		_follow_path()
 	
 	if debug_draw:
@@ -130,3 +130,149 @@ func _find_path_astar(start_pos: Vector2, end_pos: Vector2) -> Array:
 	while open_set.size() > 0:
 		# legkisebb f_cost node megkeresese az open_set-ben
 		var current_node = _get_lowest_f_cost_node(open_set)
+		
+		# jelenlegi node atrakasa closed set-be open-bol
+		open_set.erase(current_node)
+		closed_set.append(current_node)
+		
+		# ellenorzes, hogy elertuk-e a celt
+		if current_node.position.distance_to(end_point) < arrival_distance:
+			return _reconstruct_path(current_node)
+		
+		# szomszedos node-ok lekerese
+		var neighbors = _get_neighbors(current_node, end_point)
+		
+		# szomszededos node-ok kiertekelese
+		for neighbor in neighbors:
+			# skip ha a closed set-ben van
+			if _is_in_set(neighbor.position, closed_set):
+				continue
+			
+			var in_open_node = _find_in_set(neighbor.position, open_set)
+			
+			if in_open_node:
+				# ha van jobb utvonal a jelenlegi node-hoz, update
+				if neighbor.g_cost < in_open_node.g_cost:
+					in_open_node.g_cost = neighbor.g_cost
+					in_open_node.f_cost = neighbor.g_cost + in_open_node.h_cost
+					in_open_node.parent = current_node
+			
+			else:
+				open_set.append(neighbor)
+		
+	return [] # ha idaig eljutunk, akkor elvileg nem talaltunk utvonalat
+
+
+# helper func -> legkisebb f_cost node keresese
+func _get_lowest_f_cost_node(nodes: Array) -> AStarNode:
+	var lowest = nodes[0]
+	for node in nodes:
+		if node.f_cost < lowest.f_cost:
+			lowest = node
+	
+	return lowest
+
+
+# helper func -> szomszedos node generalas A* algohoz
+func _get_neighbors(node: AStarNode, goal_pos: Vector2) -> Array:
+	var neighbors : Array = []
+	
+	# sampling tavolsag
+	var sample_distance = 16.0
+	
+	# cardinal + diagonal iranyok definialasa
+	var directions = [
+		Vector2(1, 0), Vector2(-1, 0),
+		Vector2(0, 1), Vector2(0, -1),
+		Vector2(1, 1), Vector2(-1, 1),
+		Vector2(1, -1), Vector2(-1, -1)
+	]
+	
+	# point sample-oles minden iranyba
+	for dir in directions:
+		var sample_pos = node.position + dir.normalized() * sample_distance
+		
+		# legkozelebbi pont megkeresese navmesh-en
+		var closest_point = NavigationServer2D.map_get_closest_point(nav_map_rid, sample_pos)
+		
+		# csak olyan point-okat hasznaljunk, amik validak (kozel vannak a sample pos-hoz)
+		if closest_point.distance_to(sample_pos) < sample_distance * 0.5:
+			# ellenorzes, hogy tiszta e az ut
+			var path_to_point = NavigationServer2D.map_get_path(
+				nav_map_rid,
+				node.position,
+				closest_point,
+				true
+			)
+			
+			# ha talaltunk valid utvonalat
+			if path_to_point.size() > 1:
+				var neighbor = AStarNode.new(closest_point, node)
+				neighbor.calculate_costs(node.position, goal_pos)
+				neighbors.append(neighbor)
+	
+	return neighbors
+
+
+# ellenorizzuk, hogy a position a set-ben van-e
+func _is_in_set(position: Vector2, node_set: Array, threshold: float = 8.0) -> bool:
+	for node in node_set:
+		if node.position.distance_to(position) < threshold:
+			return true
+		
+	return false
+
+
+# node megkeresese a set-ben
+func _find_in_set(position: Vector2, node_set: Array, threshold: float = 8.0) -> AStarNode:
+	for node in node_set:
+		if node.position.distance_to(position) < threshold:
+			return node
+	
+	return null
+
+
+# utvonal reconstruct az end node-bol start node-ba
+func _reconstruct_path(end_node: AStarNode) -> Array:
+	var path = []
+	var current = end_node
+	
+	while current != null:
+		path.append(current.position)
+		current = current.parent
+	
+	# megforditas (hogy az elejetol a vegeig legyen)
+	path.reverse()
+	return path
+
+
+# debug draw-olas vizualizalashoz
+func _draw():
+	if !debug_draw or path.size() <= 1:
+		return
+	
+	# utvonal kirajzolasa vonalankent
+	for i in range(path.size() - 1):
+		draw_line(
+			path[i] - global_position,
+			path[i + 1] - global_position,
+			Color(1, 0, 0),
+			2.0
+		)
+	
+	# waypoint-oknal karika rajzolas
+	for i in range(path.size()):
+		draw_circle(
+			path[i] - global_position,
+			3.0,
+			Color(0, 1, 0) if i == current_path_index else Color(1, 1, 0)
+		)
+	
+	# vonal rajzolasa az aktualis waypointig/hoz
+	if current_path_index < path.size():
+		draw_line(
+			Vector2.ZERO,
+			path[current_path_index] - global_position,
+			Color(0, 0, 1),
+			1.0
+		)
