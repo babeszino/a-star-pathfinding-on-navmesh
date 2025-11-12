@@ -107,10 +107,14 @@ func _follow_path():
 	velocity = direction * movement_speed
 	move_and_slide()
 	
+	# 1st fix attempt - force update
+	if get_slide_collision_count() > 0:
+		print("enemy hit wall")
+		_update_path()
+	
 	# megnezzuk, hogy elertuk e az aktualis waypointot
 	if global_position.distance_to(target_pos) < arrival_distance:
 		current_path_index += 1
-
 
 # A* algoritmus
 func _find_path_astar(start_pos: Vector2, end_pos: Vector2) -> Array:
@@ -268,7 +272,7 @@ func _draw():
 			Color(0, 1, 0) if i == current_path_index else Color(1, 1, 0)
 		)
 	
-	# vonal rajzolasa az aktualis waypointig/hoz
+	# vonal rajzolasa az aktualis waypointig
 	if current_path_index < path.size():
 		draw_line(
 			Vector2.ZERO,
