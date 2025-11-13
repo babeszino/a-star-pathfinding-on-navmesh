@@ -3,8 +3,8 @@ extends CharacterBody2D
 # movement property-k
 @export var movement_speed : float = 100.0
 @export var target_path : NodePath
-@export var path_update_interval : float = 0.5
-@export var arrival_distance : float = 16.0
+@export var path_update_interval : float = 0.15
+@export var arrival_distance : float = 10.0
 @export var debug_draw : bool = true
 
 # navigacios es utvonalkeresos valtozok
@@ -27,10 +27,7 @@ class AStarNode:
 		parent = parent_node
 
 	func calculate_costs(start_pos: Vector2, end_pos: Vector2):
-		# ---
 		# cost szamolas a kiindulasi ponttol az aktualis node-ig
-		# ---
-		
 		if parent:
 			g_cost = parent.g_cost + position.distance_to(parent.position)
 		else:
@@ -60,9 +57,16 @@ func _ready():
 		if nav_region:
 			nav_map_rid = nav_region.get_world_2d().get_navigation_map()
 	
-	NavigationServer2D.map_force_update(nav_map_rid)
-	
-	_update_path()
+	# Wait for navigation to be ready
+	call_deferred("_initialize_navigation")
+
+
+func _initialize_navigation():
+	if nav_map_rid:
+		NavigationServer2D.map_force_update(nav_map_rid)
+		# Wait one more frame for the navigation to be ready
+		await get_tree().process_frame
+		_update_path()
 
 
 func _process(delta):
@@ -79,7 +83,6 @@ func _process(delta):
 	if debug_draw:
 		queue_redraw()
 
-
 func _update_path():
 	if !is_instance_valid(target) or !nav_map_rid:
 		return
@@ -89,7 +92,6 @@ func _update_path():
 	if new_path.size() > 0:
 		path = new_path
 		current_path_index = min(1, path.size() -1) # elso waypoint-tol indulas
-	
 
 
 func _follow_path():
@@ -107,17 +109,21 @@ func _follow_path():
 	velocity = direction * movement_speed
 	move_and_slide()
 	
-	# 1st fix attempt - force update
+	# falnak utkozeskor ujraszamitas
 	if get_slide_collision_count() > 0:
-		print("enemy hit wall")
+		print("Enemy hit wall - recalculating path")
 		_update_path()
 	
 	# megnezzuk, hogy elertuk e az aktualis waypointot
 	if global_position.distance_to(target_pos) < arrival_distance:
 		current_path_index += 1
 
+
 # A* algoritmus
 func _find_path_astar(start_pos: Vector2, end_pos: Vector2) -> Array:
+	if !nav_map_rid:
+		return []
+		
 	var start_point = NavigationServer2D.map_get_closest_point(nav_map_rid, start_pos)
 	var end_point = NavigationServer2D.map_get_closest_point(nav_map_rid, end_pos)
 	
@@ -249,34 +255,32 @@ func _reconstruct_path(end_node: AStarNode) -> Array:
 	path.reverse()
 	return path
 
-
-# debug draw-olas vizualizalashoz
 func _draw():
 	if !debug_draw or path.size() <= 1:
 		return
 	
-	# utvonal kirajzolasa vonalankent
-	for i in range(path.size() - 1):
+	var local_points = []
+	var node_scale = scale.x
+	for point in path:
+		local_points.append((point - global_position) / node_scale)
+	
+	for i in range(local_points.size() - 1):
 		draw_line(
-			path[i] - global_position,
-			path[i + 1] - global_position,
-			Color(1, 0, 0),
-			2.0
+			local_points[i],
+			local_points[i + 1],
+			Color.RED,
+			1.0 / node_scale
 		)
 	
-	# waypoint-oknal karika rajzolas
-	for i in range(path.size()):
-		draw_circle(
-			path[i] - global_position,
-			3.0,
-			Color(0, 1, 0) if i == current_path_index else Color(1, 1, 0)
-		)
-	
-	# vonal rajzolasa az aktualis waypointig
-	if current_path_index < path.size():
-		draw_line(
-			Vector2.ZERO,
-			path[current_path_index] - global_position,
-			Color(0, 0, 1),
-			1.0
-		)
+	for i in range(local_points.size()):
+		var color : Color
+		var radius : float
+		
+		if i == current_path_index:
+			color = Color.YELLOW
+			radius = 2.0 / node_scale
+		else:
+			color = Color.WHITE
+			radius = 1.5 / node_scale
+		
+		draw_circle(local_points[i], radius, color)
