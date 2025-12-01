@@ -3,7 +3,7 @@ extends CharacterBody2D
 # movement property-k
 @export var movement_speed : float = 100.0
 @export var target_path : NodePath
-@export var path_update_interval : float = 0.15
+@export var path_update_interval : float = 0.15 # seconds
 @export var arrival_distance : float = 10.0
 @export var debug_draw : bool = true
 
