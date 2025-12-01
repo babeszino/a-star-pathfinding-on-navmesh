@@ -18,15 +18,15 @@ var path_timer : float = 0.0
 class AStarNode:
 	var position : Vector2
 	var parent : AStarNode
-	var g_cost : float = 0.0 # cost a start-tol
+	var g_cost : float = 0.0 # cost start-tol
 	var h_cost : float = 0.0 # heurisztika cost
-	var f_cost : float = 0.0 # teljes cost (g + h erteke)
+	var f_cost : float = 0.0 # teljes cost (g + h)
 
 	func _init(pos: Vector2, parent_node = null):
 		position = pos
 		parent = parent_node
 
-	func calculate_costs(start_pos: Vector2, end_pos: Vector2):
+	func calculate_costs(end_pos: Vector2):
 		# cost szamolas a kiindulasi ponttol az aktualis node-ig
 		if parent:
 			g_cost = parent.g_cost + position.distance_to(parent.position)
@@ -57,14 +57,15 @@ func _ready():
 		if nav_region:
 			nav_map_rid = nav_region.get_world_2d().get_navigation_map()
 	
-	# Wait for navigation to be ready
+	# varakozas hogy a navigation ready legyen
 	call_deferred("_initialize_navigation")
 
 
 func _initialize_navigation():
 	if nav_map_rid:
 		NavigationServer2D.map_force_update(nav_map_rid)
-		# Wait one more frame for the navigation to be ready
+		
+		# varakozas hogy a navigation ready legyen
 		await get_tree().process_frame
 		_update_path()
 
@@ -111,7 +112,6 @@ func _follow_path():
 	
 	# falnak utkozeskor ujraszamitas
 	if get_slide_collision_count() > 0:
-		print("Enemy hit wall - recalculating path")
 		_update_path()
 	
 	# megnezzuk, hogy elertuk e az aktualis waypointot
@@ -133,7 +133,7 @@ func _find_path_astar(start_pos: Vector2, end_pos: Vector2) -> Array:
 	
 	# kiindulasi (start) node letrehozasa
 	var start_node = AStarNode.new(start_point)
-	start_node.calculate_costs(start_point, end_point)
+	start_node.calculate_costs(end_point)
 	open_set.append(start_node)
 	
 	# Fő A* ciklus
@@ -170,7 +170,7 @@ func _find_path_astar(start_pos: Vector2, end_pos: Vector2) -> Array:
 			else:
 				open_set.append(neighbor)
 		
-	return [] # ha idaig eljutunk, akkor elvileg nem talaltunk utvonalat
+	return [] # ha idaig eljutunk, akkor nem talaltunk utvonalat
 
 
 # helper func -> legkisebb f_cost node keresese
@@ -188,21 +188,21 @@ func _get_neighbors(node: AStarNode, goal_pos: Vector2) -> Array:
 	var neighbors : Array = []
 	
 	# sampling tavolsag
-	var sample_distance = 16.0
+	var sample_distance = 16.0 # pixelben
 	
 	# cardinal + diagonal iranyok definialasa
 	var directions = [
-		Vector2(1, 0), Vector2(-1, 0),
-		Vector2(0, 1), Vector2(0, -1),
-		Vector2(1, 1), Vector2(-1, 1),
-		Vector2(1, -1), Vector2(-1, -1)
+		Vector2(1, 0), Vector2(-1, 0), # jobb, bal
+		Vector2(0, 1), Vector2(0, -1), # le, fel
+		Vector2(1, 1), Vector2(-1, 1), # jobb-le, bal-le
+		Vector2(1, -1), Vector2(-1, -1) # jobb-fel, bal-fel
 	]
 	
 	# point sample-oles minden iranyba
 	for dir in directions:
 		var sample_pos = node.position + dir.normalized() * sample_distance
 		
-		# legkozelebbi pont megkeresese navmesh-en
+		# sample_pos-hoz legkozelebbi pont megkeresese navmesh-en (navmesh)
 		var closest_point = NavigationServer2D.map_get_closest_point(nav_map_rid, sample_pos)
 		
 		# csak olyan point-okat hasznaljunk, amik validak (kozel vannak a sample pos-hoz)
@@ -218,25 +218,25 @@ func _get_neighbors(node: AStarNode, goal_pos: Vector2) -> Array:
 			# ha talaltunk valid utvonalat
 			if path_to_point.size() > 1:
 				var neighbor = AStarNode.new(closest_point, node)
-				neighbor.calculate_costs(node.position, goal_pos)
+				neighbor.calculate_costs(goal_pos)
 				neighbors.append(neighbor)
-	
+			
 	return neighbors
 
 
 # ellenorizzuk, hogy a position a set-ben van-e
-func _is_in_set(position: Vector2, node_set: Array, threshold: float = 8.0) -> bool:
+func _is_in_set(pos: Vector2, node_set: Array, threshold: float = 8.0) -> bool:
 	for node in node_set:
-		if node.position.distance_to(position) < threshold:
+		if node.position.distance_to(pos) < threshold:
 			return true
 		
 	return false
 
 
 # node megkeresese a set-ben
-func _find_in_set(position: Vector2, node_set: Array, threshold: float = 8.0) -> AStarNode:
+func _find_in_set(pos: Vector2, node_set: Array, threshold: float = 8.0) -> AStarNode:
 	for node in node_set:
-		if node.position.distance_to(position) < threshold:
+		if node.position.distance_to(pos) < threshold:
 			return node
 	
 	return null
@@ -244,16 +244,16 @@ func _find_in_set(position: Vector2, node_set: Array, threshold: float = 8.0) ->
 
 # utvonal reconstruct az end node-bol start node-ba
 func _reconstruct_path(end_node: AStarNode) -> Array:
-	var path = []
+	var result_path = []
 	var current = end_node
 	
 	while current != null:
-		path.append(current.position)
+		result_path.append(current.position)
 		current = current.parent
 	
 	# megforditas (hogy az elejetol a vegeig legyen)
-	path.reverse()
-	return path
+	result_path.reverse()
+	return result_path
 
 func _draw():
 	if !debug_draw or path.size() <= 1:
